@@ -354,8 +354,6 @@ if __name__ == '__main__':
         eval_data_map[name] = dataset_util.Dataset(eval_dataset_config, model, skip_dataset_validation=args.i_know_what_i_am_doing)
         dataset_manager.register(eval_data_map[name])
 
-    # For testing
-
     # import imageio
     # from pathlib import Path
     # import torch.nn.functional as F
