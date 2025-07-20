@@ -101,7 +101,42 @@ class BasePipeline:
 
     def get_text_encoders(self):
         raise NotImplementedError()
+# [adapter]
+# type = 'lora'
+# rank = 16
+# dtype = 'bfloat16'
+# exclude_linear_modules = ["k_img", "v_img"]
+# class wanpipeline(BasePipeline):
+#     self.transformer = WanModelFromSafetensors.from_pretrained(
+#         transformer_path,
+#         self.original_model_config_path,
+#         torch_dtype=dtype,
+#         transformer_dtype=transformer_dtype,)
 
+# class WanModelFromSafetensors(WanModel):
+#     @classmethod
+#     def from_pretrained(
+#         cls, weights_file, config_file,
+#         torch_dtype=torch.bfloat16,transformer_dtype=torch.bfloat16,
+#     ):
+#         with open(config_file, "r", encoding="utf-8") as f:
+#             config = json.load(f)
+
+#         config.pop("_class_name", None)
+#         config.pop("_diffusers_version", None)
+
+#         with init_empty_weights():
+#             model = cls(**config)
+
+#         state_dict = load_file(weights_file, device='cpu')
+#         state_dict = {
+#             re.sub(r'^model\.diffusion_model\.', '', k): v for k, v in state_dict.items()}
+
+#         for name, param in model.named_parameters():
+#             dtype_to_use = torch_dtype if any(keyword in name for keyword in KEEP_IN_HIGH_PRECISION) else transformer_dtype
+#             set_module_tensor_to_device(model, name, device='cpu', dtype=dtype_to_use, value=state_dict[name])
+
+#         return model
     def configure_adapter(self, adapter_config):
         target_linear_modules = set()
         exclude_linear_modules = adapter_config.get('exclude_linear_modules', [])

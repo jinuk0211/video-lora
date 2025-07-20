@@ -1,0 +1,51 @@
+        
+# Create training.toml
+training_config = f"""output_dir = '{os.path.join(output_dir, "lora").replace(os.sep, "/")}'
+dataset = '{dataset_path.replace(os.sep, "/")}'
+
+epochs = {epochs}
+micro_batch_size_per_gpu = 1
+pipeline_stages = 1
+gradient_accumulation_steps = 1
+gradient_clipping = 1
+warmup_steps = 0
+
+eval_every_n_epochs = 1000000
+eval_before_first_step = true
+eval_micro_batch_size_per_gpu = 1
+eval_gradient_accumulation_steps = 1
+
+save_every_n_epochs = {save_every_n_epochs}
+checkpoint_every_n_minutes = 1000000000
+activation_checkpointing = 'unsloth'
+partition_method = 'parameters'
+save_dtype = 'bfloat16'
+caching_batch_size = 1
+steps_per_print = 1
+video_clip_mode = 'single_beginning'
+blocks_to_swap = 32
+
+[model]
+type = 'wan'
+ckpt_path = '{ckpt_path.replace(os.sep, "/")}'
+dtype = 'bfloat16'
+transformer_dtype = '{transformer_dtype}'
+timestep_sample_method = 'uniform'
+
+[adapter]
+type = 'lora'
+rank = 16
+dtype = 'bfloat16'
+exclude_linear_modules = ["k_img", "v_img"]
+
+[optimizer]
+type = '{optimizer_type}'
+lr = {learning_rate}
+betas = [0.9, 0.99]
+weight_decay = 0.01
+{stabilize_line}
+"""
+
+training_path = os.path.join(configs_dir, 'training.toml')
+with open(training_path, 'w', encoding='utf-8') as f:
+    f.write(training_config)
