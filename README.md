@@ -1,4 +1,6 @@
 # video-lora
+<img width="983" height="474" alt="image" src="https://github.com/user-attachments/assets/984d997b-888c-469f-9d44-049cd3067106" />
+
 ```bash
 python predata_app.py --port 8890 --checkpoint_dir models_sam/sam2_hiera_large.pt
 
