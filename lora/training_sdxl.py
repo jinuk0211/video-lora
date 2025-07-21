@@ -33,7 +33,6 @@ import transformers
 import transformers.utils.logging
 from transformers import CLIPTokenizer, CLIPTextModel, CLIPTextModelWithProjection
 
-from .utils.registry import ClassRegistry
 from .utils.model import get_layer_by_name
 from .model.lora import (
     lora_linear_layers, lora_prosessors, LOrthogonalLoRACrossAttnProcessor
@@ -43,7 +42,22 @@ from .model.utils_sdxl import cast_training_params
 from .data.dataset_sdxl import (
     ImageDataset, DreamBoothDataset, collate_fn, tokenize_prompt, encode_tokens, compute_time_ids,
 )
+class ClassRegistry:
+    def __init__(self):
+        self.classes = dict()
+        self.args = dict()
+        self.arg_keys = None
 
+    def __getitem__(self, item):
+        return self.classes[item]
+
+    def add_to_registry(self, name):
+        def add_class_by_name(cls):
+            self.classes[name] = cls
+            return cls
+
+        return add_class_by_name
+        
 logger = get_logger(__name__)
 trainers = ClassRegistry()
 
@@ -184,7 +198,7 @@ class LoraTrainerSDXL:
         self.text_encoder.requires_grad_(False)
         self.text_encoder_2.requires_grad_(False)
 
-        lora_attn_processor = lora_prosessors[self.config.trainer_type]
+        lora_attn_processor = lora_prosessors[self.config.trainer_type] #  --trainer_type="ortho_lora" 
         lora_linear_layer = lora_linear_layers[self.config.trainer_type]
 
         self.params_to_optimize = []

@@ -3,8 +3,8 @@
 
 ```bash
 python predata_app.py --port 8890 --checkpoint_dir models_sam/sam2_hiera_large.pt
-
 ```
+![alt text](image.png)
 ```bash
 NCCL_P2P_DISABLE="1" NCCL_IB_DISABLE="1" deepspeed --num_gpus=1 train.py --deepspeed --config ./processed_data/your_sequence/configs/training.toml
 ```
