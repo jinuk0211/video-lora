@@ -22,7 +22,7 @@ from wan.modules.tokenizers import HuggingfaceTokenizer
 from wan.modules.vae import WanVAE
 from wan.modules.model import (
     WanModel, sinusoidal_embedding_1d, WanLayerNorm, WanSelfAttention, WAN_CROSSATTENTION_CLASSES
-)
+) #기본 wanmodel model_type='t2v'
 from wan.modules.clip import CLIPModel
 from wan import configs as wan_configs
 from safetensors.torch import load_file

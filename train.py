@@ -35,19 +35,6 @@ wandb_enable = False
 
 TIMESTEP_QUANTILES_FOR_EVAL = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]
 
-parser = argparse.ArgumentParser()
-parser.add_argument('--config', help='Path to TOML configuration file.')
-parser.add_argument('--local_rank', type=int, default=-1,
-                    help='local rank passed from distributed launcher')
-parser.add_argument('--resume_from_checkpoint', nargs='?', const=True, default=None,
-                    help='resume training from checkpoint. If no value is provided, resume from the most recent checkpoint. If a folder name is provided, resume from that specific folder.')
-parser.add_argument('--regenerate_cache', action='store_true', default=None, help='Force regenerate cache. Useful if none of the files have changed but their contents have, e.g. modified captions.')
-parser.add_argument('--cache_only', action='store_true', default=None, help='Cache model inputs then exit.')
-parser.add_argument('--i_know_what_i_am_doing', action='store_true', default=None, help="Skip certain checks and overrides. You may end up using settings that won't work.")
-parser.add_argument('--master_port', type=int, default=29500, help='Master port for distributed training')
-parser.add_argument('--dump_dataset', type=Path, default=None, help='Decode cached latents and dump the dataset to this directory.')
-parser = deepspeed.add_config_arguments(parser)
-args = parser.parse_args()
 
 
 class DummyOptimizer(torch.optim.Optimizer):
@@ -80,48 +67,6 @@ def _count_all_layer_params(self):
             param_counts[idx] = sum(p.numel() for p in layer.parameters())
     return param_counts
 ds_pipe_module.PipelineModule._count_layer_params = _count_all_layer_params
-
-
-def set_config_defaults(config):
-    # Force the user to set this. If we made it a default of 1, it might use a lot of disk space.
-    assert 'save_every_n_epochs' in config
-
-    config.setdefault('pipeline_stages', 1)
-    config.setdefault('activation_checkpointing', False)
-    config['reentrant_activation_checkpointing'] = (config['activation_checkpointing'] == 'unsloth')
-    config.setdefault('warmup_steps', 0)
-    if 'save_dtype' in config:
-        config['save_dtype'] = DTYPE_MAP[config['save_dtype']]
-
-    model_config = config['model']
-    model_dtype_str = model_config['dtype']
-    model_config['dtype'] = DTYPE_MAP[model_dtype_str]
-    if transformer_dtype := model_config.get('transformer_dtype', None):
-        model_config['transformer_dtype'] = DTYPE_MAP.get(transformer_dtype, transformer_dtype)
-    model_config.setdefault('guidance', 1.0)
-
-    if 'adapter' in config:
-        adapter_config = config['adapter']
-        adapter_type = adapter_config['type']
-        if adapter_config['type'] == 'lora':
-            if 'alpha' in adapter_config:
-                raise NotImplementedError(
-                    'This script forces alpha=rank to make the saved LoRA format simpler and more predictable with downstream inference programs. Please remove alpha from the config.'
-                )
-            adapter_config['alpha'] = adapter_config['rank']
-            adapter_config.setdefault('dropout', 0.0)
-            adapter_config.setdefault('dtype', model_dtype_str)
-            adapter_config['dtype'] = DTYPE_MAP[adapter_config['dtype']]
-        else:
-            raise NotImplementedError(f'Adapter type {adapter_type} is not implemented')
-
-    config.setdefault('logging_steps', 1)
-    config.setdefault('eval_datasets', [])
-    config.setdefault('eval_gradient_accumulation_steps', 1)
-    config.setdefault('eval_every_n_steps', None)
-    config.setdefault('eval_every_n_epochs', None)
-    config.setdefault('eval_before_first_step', True)
-
 
 def get_most_recent_run_dir(output_dir):
     return list(sorted(glob.glob(os.path.join(output_dir, '*'))))[-1]
@@ -222,18 +167,6 @@ def evaluate(model, model_engine, eval_dataloaders, tb_writer, step, eval_gradie
     model.prepare_block_swap_training()
 
 
-def distributed_init(args):
-    """Initialize distributed training environment."""
-    world_size = int(os.getenv('WORLD_SIZE', '1'))
-    rank = int(os.getenv('RANK', '0'))
-    local_rank = args.local_rank
-
-    # Set environment variables for distributed training
-    os.environ['MASTER_ADDR'] = os.getenv('MASTER_ADDR', 'localhost')
-    os.environ['MASTER_PORT'] = str(args.master_port)
-
-    return world_size, rank, local_rank
-
 
 def get_prodigy_d(optimizer):
     d = 0
@@ -253,6 +186,60 @@ def _get_automagic_lrs(optimizer):
     return lrs, lrs.mean()
 
 
+def set_config_defaults(config):
+    # Force the user to set this. If we made it a default of 1, it might use a lot of disk space.
+    assert 'save_every_n_epochs' in config
+
+    config.setdefault('pipeline_stages', 1)
+    config.setdefault('activation_checkpointing', False)
+    config['reentrant_activation_checkpointing'] = (config['activation_checkpointing'] == 'unsloth')
+    config.setdefault('warmup_steps', 0)
+    if 'save_dtype' in config:
+        config['save_dtype'] = DTYPE_MAP[config['save_dtype']]
+
+    model_config = config['model']
+    model_dtype_str = model_config['dtype']
+    model_config['dtype'] = DTYPE_MAP[model_dtype_str]
+    if transformer_dtype := model_config.get('transformer_dtype', None):
+        model_config['transformer_dtype'] = DTYPE_MAP.get(transformer_dtype, transformer_dtype)
+    model_config.setdefault('guidance', 1.0)
+
+    if 'adapter' in config:
+        adapter_config = config['adapter']
+        adapter_type = adapter_config['type']
+        if adapter_config['type'] == 'lora':
+            if 'alpha' in adapter_config:
+                raise NotImplementedError(
+                    'This script forces alpha=rank to make the saved LoRA format simpler and more predictable with downstream inference programs. Please remove alpha from the config.'
+                )
+            adapter_config['alpha'] = adapter_config['rank']
+            adapter_config.setdefault('dropout', 0.0)
+            adapter_config.setdefault('dtype', model_dtype_str)
+            adapter_config['dtype'] = DTYPE_MAP[adapter_config['dtype']]
+        else:
+            raise NotImplementedError(f'Adapter type {adapter_type} is not implemented')
+
+    config.setdefault('logging_steps', 1)
+    config.setdefault('eval_datasets', [])
+    config.setdefault('eval_gradient_accumulation_steps', 1)
+    config.setdefault('eval_every_n_steps', None)
+    config.setdefault('eval_every_n_epochs', None)
+    config.setdefault('eval_before_first_step', True)
+
+parser = argparse.ArgumentParser()
+parser.add_argument('--config', help='Path to TOML configuration file.')
+parser.add_argument('--local_rank', type=int, default=-1,
+                    help='local rank passed from distributed launcher')
+parser.add_argument('--resume_from_checkpoint', nargs='?', const=True, default=None,
+                    help='resume training from checkpoint. If no value is provided, resume from the most recent checkpoint. If a folder name is provided, resume from that specific folder.')
+parser.add_argument('--regenerate_cache', action='store_true', default=None, help='Force regenerate cache. Useful if none of the files have changed but their contents have, e.g. modified captions.')
+parser.add_argument('--cache_only', action='store_true', default=None, help='Cache model inputs then exit.')
+parser.add_argument('--i_know_what_i_am_doing', action='store_true', default=None, help="Skip certain checks and overrides. You may end up using settings that won't work.")
+parser.add_argument('--master_port', type=int, default=29500, help='Master port for distributed training')
+parser.add_argument('--dump_dataset', type=Path, default=None, help='Decode cached latents and dump the dataset to this directory.')
+parser = deepspeed.add_config_arguments(parser)
+args = parser.parse_args()
+
 if __name__ == '__main__':
     apply_patches()
 
@@ -267,7 +254,18 @@ if __name__ == '__main__':
     common.AUTOCAST_DTYPE = config['model']['dtype']
 
     # Initialize distributed environment before deepspeed
-    world_size, rank, local_rank = distributed_init(args)
+    # world_size, rank, local_rank = distributed_init(args)
+
+# def distributed_init(args):
+    """Initialize distributed training environment."""
+    world_size = int(os.getenv('WORLD_SIZE', '1'))
+    rank = int(os.getenv('RANK', '0'))
+    local_rank = args.local_rank
+
+    # Set environment variables for distributed training
+    os.environ['MASTER_ADDR'] = os.getenv('MASTER_ADDR', 'localhost')
+    os.environ['MASTER_PORT'] = str(args.master_port)
+
 
     # Now initialize deepspeed
     deepspeed.init_distributed()
@@ -340,8 +338,30 @@ if __name__ == '__main__':
 
     train_data = dataset_util.Dataset(dataset_config, model, skip_dataset_validation=args.i_know_what_i_am_doing)
     dataset_manager.register(train_data)
+# class Dataset:
+#     def __init__(self, dataset_config, model, skip_dataset_validation=False):
+#         super().__init__()
+#         self.dataset_config = dataset_config
+#         self.model = model
+#         self.model_name = self.model.name
+#         self.post_init_called = False
+#         self.eval_quantile = None
+#         if not skip_dataset_validation:
+#             self.model.model_specific_dataset_config_validation(self.dataset_config)
+
+#         self.directory_datasets = []
+#         for directory_config in dataset_config['directory']:
+#             directory_dataset = DirectoryDataset(
+#                 directory_config,
+#                 dataset_config,
+#                 self.model_name,
+#                 framerate=model.framerate,
+#                 skip_dataset_validation=skip_dataset_validation,
+#             )
+#             self.directory_datasets.append(directory_dataset)
 
     eval_data_map = {}
+    #if eval_list = [], for 문 passed
     for i, eval_dataset in enumerate(config['eval_datasets']):
         if type(eval_dataset) == str:
             name = f'eval{i}'
@@ -355,35 +375,9 @@ if __name__ == '__main__':
         dataset_manager.register(eval_data_map[name])
 
 
-    if args.dump_dataset:
-        # only works for flux
-        import torchvision
-        dataset_manager.cache(unload_models=False)
-        if is_main_process():
-            with torch.no_grad():
-                os.makedirs(args.dump_dataset, exist_ok=True)
-                vae = model.vae.to('cuda')
-                train_data.post_init(
-                    0,
-                    1,
-                    1,
-                    1,
-                    1,
-                )
-                for i, item in enumerate(train_data):
-                    latents = item['latents']
-                    latents = latents / vae.config.scaling_factor
-                    if hasattr(vae.config, 'shift_factor') and vae.config.shift_factor is not None:
-                        latents = latents + vae.config.shift_factor
-                    img = vae.decode(latents.to(vae.device, vae.dtype)).sample.to(torch.float32)
-                    img = img.squeeze(0)
-                    img = ((img + 1) / 2).clamp(0, 1)
-                    pil_img = torchvision.transforms.functional.to_pil_image(img)
-                    pil_img.save(args.dump_dataset / f'{i}.png')
-                    if i >= 100:
-                        break
-        dist.barrier()
-        quit()
+    # if args.dump_dataset:
+    #     # only works for flux 코드 있는데 지움
+      
 
     dataset_manager.cache()
     if args.cache_only:
@@ -391,6 +385,11 @@ if __name__ == '__main__':
 
     model.load_diffusion_model()
 
+# [adapter]
+# type = 'lora'
+# rank = 16
+# dtype = 'bfloat16'
+# exclude_linear_modules = ["k_img", "v_img"]
     if adapter_config := config.get('adapter', None):
         model.configure_adapter(adapter_config)
         is_adapter = True

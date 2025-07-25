@@ -137,16 +137,16 @@ class BasePipeline:
 #             set_module_tensor_to_device(model, name, device='cpu', dtype=dtype_to_use, value=state_dict[name])
 
 #         return model
-    def configure_adapter(self, adapter_config):
-        target_linear_modules = set()
-        exclude_linear_modules = adapter_config.get('exclude_linear_modules', [])
-        for name, module in self.transformer.named_modules():
-            if module.__class__.__name__ not in self.adapter_target_modules:
 # class WanPipeline(BasePipeline):
 #     name = 'wan'
 #     framerate = 16
 #     checkpointable_layers = ['TransformerLayer']
-#     adapter_target_modules = ['WanAttentionBlock']                
+#     adapter_target_modules = ['WanAttentionBlock']     
+    def configure_adapter(self, adapter_config):
+        target_linear_modules = set()
+        exclude_linear_modules = adapter_config.get('exclude_linear_modules', [])
+        for name, module in self.transformer.named_modules():
+            if module.__class__.__name__ not in self.adapter_target_modules: #adapter_target_modules = ['WanAttentionBlock'] 
                 continue
             for full_submodule_name, submodule in module.named_modules(prefix=name):
                 if isinstance(submodule, nn.Linear):

@@ -192,7 +192,8 @@ class SizeBucketDataset:
 
 # Logical concatenation of multiple SizeBucketDataset, for the same size bucket. It returns items
 # as batches.
-class ConcatenatedBatchedDataset:
+class ConcatenatedBatchedDataset: 
+    #ConcatenatedBatchedDataset(all_datasets) 이 이제 self.buckets에 append되어 dataloader __getitem__에서 사용된다
     def __init__(self, datasets):
         self.datasets = datasets
         self.post_init_called = False
@@ -233,44 +234,6 @@ class ConcatenatedBatchedDataset:
         if new_length == 0 and is_main_process():
             logger.warning(f"size bucket {self.datasets[0].size_bucket} is being completely dropped because it doesn't have enough images")
 
-
-class ARBucketDataset:
-    def __init__(self, ar_frames, resolutions, metadata_dataset, directory_config, model_name):
-        self.ar_frames = ar_frames
-        self.resolutions = resolutions
-        self.metadata_dataset = metadata_dataset
-        self.directory_config = directory_config
-        self.model_name = model_name
-        self.size_buckets = []
-        self.path = Path(directory_config['path'])
-        self.cache_dir = self.path / 'cache' / self.model_name / f'ar_frames_{self.ar_frames[0]:.3f}_{self.ar_frames[1]}'
-        os.makedirs(self.cache_dir, exist_ok=True)
-
-        for res in resolutions:
-            area = res**2
-            w = math.sqrt(area * self.ar_frames[0])
-            h = area / w
-            w = round_to_nearest_multiple(w, IMAGE_SIZE_ROUND_TO_MULTIPLE)
-            h = round_to_nearest_multiple(h, IMAGE_SIZE_ROUND_TO_MULTIPLE)
-            size_bucket = (w, h, self.ar_frames[1])
-            metadata_with_size_bucket = self.metadata_dataset.map(lambda example: {'size_bucket': size_bucket}, keep_in_memory=True)
-            self.size_buckets.append(
-                SizeBucketDataset(metadata_with_size_bucket, directory_config, size_bucket, model_name)
-            )
-
-    def get_size_bucket_datasets(self):
-        return self.size_buckets
-
-    def cache_latents(self, map_fn, regenerate_cache=False, caching_batch_size=1):
-        print(f'caching latents: {self.ar_frames}')
-        for ds in self.size_buckets:
-            ds.cache_latents(map_fn, regenerate_cache=regenerate_cache, caching_batch_size=caching_batch_size)
-
-    def cache_text_embeddings(self, map_fn, i, regenerate_cache=False, caching_batch_size=1):
-        print(f'caching text embeddings: {self.ar_frames}')
-        te_dataset = _cache_text_embeddings(self.metadata_dataset, map_fn, i, self.cache_dir, regenerate_cache, caching_batch_size)
-        for size_bucket_dataset in self.size_buckets:
-            size_bucket_dataset.add_text_embedding_dataset(te_dataset)
 
 
 class DirectoryDataset:
@@ -352,23 +315,11 @@ class DirectoryDataset:
             remove_columns=metadata_dataset.column_names,
         )
 
-        # Don't use bucketing, directly create a simple dataset
-        # grouped_metadata = defaultdict(lambda: defaultdict(list))
-        # for example in metadata_dataset:
-        #     if self.use_size_buckets:
-        #         grouping_key = tuple(example['size_bucket'])
-        #     else:
-        #         grouping_key = example['ar_bucket']
-        #         grouping_key = (grouping_key[0], int(grouping_key[1]))
-        #     d = grouped_metadata[grouping_key]
-        #     for k, v in example.items():
-        #         d[k].append(v)
 
-        # Create a simple dataset list, don't use bucketing
         self.simple_datasets = []
         # Use original width, height, frames as size_bucket
         original_size_bucket = (None, None, None)  # Placeholder, will be determined dynamically during preprocessing
-        self.simple_datasets.append(
+        self.simple_datasets.append( #이걸로 이제 __getitem__에 쓸 all_dataset
             SizeBucketDataset(
                 metadata_dataset,
                 self.directory_config,

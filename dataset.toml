@@ -1,0 +1,5 @@
+        dataset_config = f"""enable_ar_bucket = false
+[[directory]]
+path = '{os.path.join(output_dir, "traindata").replace(os.sep, "/")}'
+num_repeats = 1
+"""
