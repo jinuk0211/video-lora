@@ -493,12 +493,18 @@ if __name__ == '__main__':
         loss_fn=model.get_loss_fn(),
         **additional_pipeline_module_kwargs
     )
+#
+    for name, param in pipeline_model.named_parameters():
+        if 'lora' in name:
+            param.requires_grad = True
+        else:
+            param.requires_grad = False    
     parameters_to_train = [p for p in pipeline_model.parameters() if p.requires_grad]
 #-----------------------
     for name, param in pipeline_model.named_parameters():
         if param.requires_grad:
             print(f"{name}: {param.shape}")
-    # print(f'parameters_to_train:{parameters_to_train}')
+    print(f'parameters_to_train:{parameters_to_train}')
 #-----------------------------
     if config['compile']:
         pipeline_model.compile()
